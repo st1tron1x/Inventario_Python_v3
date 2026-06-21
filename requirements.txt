@@ -1,0 +1,6 @@
+psutil
+pywin32
+wmi
+openpyxl
+pillow
+pyinstaller
