@@ -4,3 +4,4 @@ wmi
 openpyxl
 pillow
 pyinstaller
+customtkinter

@@ -32,6 +32,17 @@ def generar_reporte():
             "Error",
             str(e)
         )
+from core.actas import generar_todas_las_actas, generar_acta
+
+def generar_actas():
+    try:
+        rutas = generar_todas_las_actas()
+        messagebox.showinfo(
+            "Actas generadas",
+            f"Se generaron {len(rutas)} actas en la carpeta /actas"
+        )
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
 
 def ventana_inventario(parent):
 
@@ -517,7 +528,15 @@ def iniciar_app():
 
     boton_reporte.pack()
 
-
+    boton_actas = ctk.CTkButton(
+        panel,
+        text="📄 Generar Actas de Entrega",
+        width=350,
+        height=55,
+        corner_radius=15,
+        command=generar_actas
+    )
+    boton_actas.pack(pady=10)
 
 
 
