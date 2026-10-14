@@ -1,38 +1,128 @@
-﻿# Inventario_TYC
-BEGIN TRANSACTION;
-CREATE TABLE IF NOT EXISTS "colaboradores" (
-	"id"	INTEGER,
-	"tipo_documento"	TEXT,
-	"documento"	TEXT UNIQUE,
-	"nombre"	TEXT NOT NULL,
-	"cargo"	TEXT,
-	"area"	TEXT,
-	"sede"	TEXT,
-	"correo"	TEXT,
-	"fecha_registro"	DATETIME DEFAULT CURRENT_TIMESTAMP,
-	PRIMARY KEY("id" AUTOINCREMENT)
-);
-CREATE TABLE IF NOT EXISTS "equipos" (
-	"id"	INTEGER,
-	"colaborador_id"	INTEGER,
-	"hostname"	TEXT,
-	"usuario_windows"	TEXT,
-	"serial"	TEXT,
-	"fabricante"	TEXT,
-	"modelo"	TEXT,
-	"procesador"	TEXT,
-	"memoria"	TEXT,
-	"discos"	TEXT,
-	"ip"	TEXT,
-	"mac"	TEXT,
-	"sistema"	TEXT,
-	"fecha_registro"	DATETIME DEFAULT CURRENT_TIMESTAMP,
-	PRIMARY KEY("id" AUTOINCREMENT)
+# Inventario TI — T&C Asociados
+
+Aplicación de escritorio para Windows que inventaría los equipos de cómputo,
+registra a quién se entregan (con sus periféricos) y genera el **Acta de
+Entrega FR-GTI-003**.
+
+## Qué hace
+
+| Botón | Resultado |
+|---|---|
+| ➕ Nuevo Inventario | Lee el hardware del equipo (WMI) y lo registra junto con el colaborador y los periféricos entregados. |
+| 📊 Generar Reporte Excel | `reportes/Inventario_TYC_<fecha>.xlsx` con todo el inventario. |
+| 📄 Acta de Entrega (1 a 1) | Eliges un colaborador y se genera su acta en `actas/`. |
+| 📁 Actas Globales (todos) | Genera el acta de **cada** colaborador con equipo, de una sola vez. |
+
+## Periféricos y acta de entrega
+
+Al registrar un equipo se marcan los periféricos que se entregan (mouse,
+teclado, monitor adicional, audífono, multipuerto, adaptador de red, base
+refrigerante, conector de base refrigerante, y hasta 2 "otros" libres), cada
+uno con su serial opcional. Se guardan en `equipos.perifericos`.
+
+Al generar el acta:
+
+- Los periféricos que tienen casilla en el formato quedan **marcados**.
+- Los que no (Monitor adicional y los "otros") marcan **"Otro, Cual?"** con su nombre.
+- Los **seriales** van en *Observaciones adicionales*.
+- El sistema operativo se escribe en *Sistema Op.* (celda `C28`).
+
+### Detección automática de periféricos
+
+El botón **🔍 Detectar periféricos conectados** del formulario consulta WMI y
+pre-marca lo que Windows ve conectado; el técnico revisa y corrige.
+
+| Periférico | Qué se obtiene |
+|---|---|
+| Monitor externo (ej. Samsung) | Marca, modelo y **serial** (vienen del EDID del monitor). La pantalla del portátil se ignora. |
+| Mouse / teclado USB (ej. Logitech) | Marca por el VID del fabricante. El serial solo si el dispositivo lo trae; los combos económicos (con cable o receptor inalámbrico) normalmente no. |
+| Adaptador USB-Red | Nombre del adaptador y su **MAC** como identificador. |
+| Hub USB (ej. el de 3 puertos del adaptador) | Se marca "Multipuerto"; casi nunca tiene serial. |
+
+Lo conectado no es necesariamente lo que se entrega: por eso es una sugerencia.
+Para ajustar los filtros con hardware real, ejecutar en Windows con los
+periféricos conectados `python herramientas\diagnostico_perifericos.py` y
+revisar `diagnostico_perifericos.txt`.
+
+El mapeo periférico → celda está en `core/actas.py` (`CASILLAS`). La plantilla
+se rellena parchando el XML de la hoja y no con openpyxl, porque openpyxl
+pierde el vínculo que hace que Excel muestre las casillas como checkbox reales.
+
+## Estructura
+
+```
+app.py              punto de entrada
+core/
+  database.py       SQLite: tablas, migración, guardado
+  hardware.py       lectura de hardware (WMI, solo Windows)
+  inventario.py     registra colaborador + equipo + periféricos
+  perifericos.py    catálogo y (de)serialización de periféricos
+  dispositivos.py   detección automática de periféricos (WMI)
+  actas.py          generación del FR-GTI-003 desde la plantilla
+  reportes.py       exportación a Excel
+  rutas.py          rutas válidas en código fuente y en el .exe
+gui/                ventanas (customtkinter)
+assets/             plantilla_acta.xlsx, background.png
+herramientas/       diagnostico_perifericos.py (qué expone Windows)
+tests/              pruebas del núcleo (sin GUI ni Windows)
+build_exe.bat       genera el .exe
+```
+
+## Ejecutar desde el código
+
+```bat
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+python app.py
+```
+
+## Generar el .exe
+
+En Windows, con Python 3.10+ instalado, doble clic en `build_exe.bat`
+(crea el entorno, instala dependencias y ejecuta PyInstaller).
+Resultado: `dist\InventarioTI.exe`, un solo archivo.
+
+- Copia el `.exe` a una carpeta **donde se pueda escribir**: junto a él se crean
+  `data\` (base de datos), `actas\` y `reportes\`.
+- Para conservar un inventario existente, copia su `inventario.db` a `data\`
+  junto al `.exe`.
+- La plantilla y el fondo viajan dentro del `.exe`. Si pones una
+  `assets\plantilla_acta.xlsx` junto al `.exe`, esa tiene prioridad (sirve para
+  actualizar el formato sin recompilar).
+
+## Base de datos
+
+SQLite. Si `equipos` ya existía sin la columna `perifericos`, se agrega sola al
+abrir la aplicación.
+
+```sql
+CREATE TABLE colaboradores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tipo_documento TEXT, documento TEXT UNIQUE,
+    nombre TEXT NOT NULL, cargo TEXT, area TEXT, sede TEXT, correo TEXT,
+    fecha_registro DATETIME DEFAULT (datetime('now','localtime'))
 );
 
-Ejemplo actual:
-INSERT INTO "colaboradores" VALUES (1,'CC','1120560075','JUANA VALENTINA SILVA SOTO','ANALISTA DE ADUANA','OPERACIONES ','CALI','JUANASILVA1909@GMAIL.COM','2026-10-07 14:19:29');
-INSERT INTO "colaboradores" VALUES (2,'CC','1116156130','MARIA JOSE BARONA GAÑAN','APRENDIZ','DOCUMENTACION ','CALI','BARONA.MARIA@CORREOUNIVALLE.EDU.CO','2026-10-07 18:56:56');
-INSERT INTO "equipos" VALUES (1,1,'OPE0005','jsilva','5QY8CJ4','Dell Inc.','Dell Pro 15 Essential PV15250','13th Gen Intel(R) Core(TM) i7-1355U','[{"fabricante": "80AD000080AD", "capacidad_gb": 16.0, "velocidad_mhz": 5600, "tipo": "DDR5"}]','[{"modelo": "BM9C1 Samsung 512GB", "interfaz": "SCSI", "tipo": "HDD", "capacidad_gb": 476.94}]','192.168.0.58','3c:ef:a5:f0:4f:ba','{''nombre'': ''Microsoft Windows 11 Pro'', ''version'': ''10.0.26200'', ''build'': ''26200'', ''arquitectura'': ''64 bits''}','2026-10-07 14:19:32');
-INSERT INTO "equipos" VALUES (2,2,'DOC0005','mbarona','PF1QDF9S','LENOVO','20L6S1RS02','Intel(R) Core(TM) i5-7300U CPU @ 2.60GHz','[{"fabricante": "SK Hynix", "capacidad_gb": 4.0, "velocidad_mhz": 2133, "tipo": "DDR4"}, {"fabricante": "SK Hynix", "capacidad_gb": 4.0, "velocidad_mhz": 2133, "tipo": "DDR4"}]','[{"modelo": "ADATA SU650NS38", "interfaz": "IDE", "tipo": "HDD", "capacidad_gb": 447.13}]','192.168.0.87','84:fd:d1:8e:ba:79','{''nombre'': ''Microsoft Windows 11 Pro'', ''version'': ''10.0.26200'', ''build'': ''26200'', ''arquitectura'': ''64 bits''}','2026-10-07 18:56:58');
-COMMIT;
+CREATE TABLE equipos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    colaborador_id INTEGER,
+    hostname TEXT, usuario_windows TEXT, serial TEXT UNIQUE,
+    fabricante TEXT, modelo TEXT, procesador TEXT,
+    memoria TEXT,       -- JSON: módulos de RAM
+    discos TEXT,        -- JSON: discos
+    ip TEXT, mac TEXT,
+    sistema TEXT,       -- dict de Python como texto: nombre, version, build, arquitectura
+    perifericos TEXT,   -- JSON: [{"clave": "mouse", "tipo": "Mouse", "serial": "ABC123", "detalle": "Logitech"}]
+    fecha_registro DATETIME DEFAULT (datetime('now','localtime'))
+);
+```
+
+Dónde queda el archivo: con el `.exe`, en `data\inventario.db` junto al
+ejecutable; ejecutando `python app.py`, en `core\data\inventario.db`.
+
+## Pruebas
+
+```bat
+python -m unittest discover -s tests -t . -v
+```
